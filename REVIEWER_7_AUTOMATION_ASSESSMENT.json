@@ -1,0 +1,94 @@
+{
+  "reviewer": "Reviewer 7: Automation & Monitoring",
+  "assessment_date": "2026-02-17T21:31:00Z",
+  "job_sequencing": "Acceptable",
+  "failure_recovery": "Adequate",
+  "monitoring_quality": "Weak",
+  "operational_burden": "High",
+  "issues_found": [
+    {
+      "severity": "HIGH",
+      "category": "Failure Recovery",
+      "issue": "parse_reservations failure at 5:45 AM has no guard against orphaned 6:00 AM orchestrator run",
+      "details": "If /app/cron/parse_reservations.py crashes (Python error, permission denied, etc.), there is no check to prevent the 6:00 AM cron job from executing with stale/missing data. No process monitor, no health check, no lock file.",
+      "resolution": "Implement: (1) Lock file mechanism (parse_res creates ~/.rate_mgmt/parse.lock at 5:45 AM start, deletes on completion). (2) Orchestrator checks for lock at 6:00 AM; if present, skip run + alert Seth. (3) Automatic retry at 6:15 AM if lock still held after 30 min."
+    },
+    {
+      "severity": "HIGH",
+      "category": "Monitoring & Alerting",
+      "issue": "No automated alerting system defined; Seth must manually check logs daily to detect failures",
+      "details": "Architecture mentions Slack alerts as 'optional', but no concrete implementation. No monitoring tool (Datadog/Sentry) specified. No SLA for 'acceptable' latency. If scraper fails at 8 PM, parser fails at 5:45 AM, or PMS push fails at 6:15 AM, Seth has no automatic notification. Manual daily log review is required.",
+      "resolution": "Implement: (1) Send Slack message immediately on job failure (parse_res, scraper, rate push). (2) Send daily summary at 6:30 AM ('All systems nominal' or 'X failures detected'). (3) Set up Sentry for error tracking with email alerts on new errors. (4) Create ops dashboard (URL) showing: last parse time, last scrape time, last rate push time, any failures in last 24h."
+    },
+    {
+      "severity": "HIGH",
+      "category": "Monitoring & Alerting",
+      "issue": "No data quality validation; system can commit garbage rates to PMS without detection",
+      "details": "Agent votes and competitor scrapes are written to DB with no validation. Example: scraper returns rate='abc' (string, not float), agent recommends $999 (insane), competitor rate jumps 50% overnight. No automatic sanity checks. No alerts on suspicious data.",
+      "resolution": "Implement: (1) Data quality checks before any rate write: (a) Recommended rate must be within ±15% of previous rate. (b) Recommended rate must be ±10% of competitor median. (c) Agent confidence must be >60% or flag for review. (2) Alert Seth if any check fails. (3) Require manual approval before publishing suspect rates."
+    },
+    {
+      "severity": "HIGH",
+      "category": "Manual Override",
+      "issue": "'One-click revert' mentioned in architecture docs, but no implementation or documented process",
+      "details": "Architecture Section 6.2 shows UI mockup with [Revert] button, but: (1) No rollback script exists. (2) Unclear how rates are written to PMS (API? CSV? SSH tunnel?). (3) No documented steps for Seth to manually revert a bad rate. (4) Estimated time to revert: 7-10+ minutes (must find logs, understand issue, SSH to server, query DB, push correction back to PMS).",
+      "resolution": "Create: (1) Rollback script (rollback.py --location LAS_AIRPORT --car_class E --revert_to_date 2026-02-17). Script: (a) Finds previous rate in rate_history. (b) Writes to PMS via same method as orchestrator. (c) Logs revert action. (d) Alerts Seth via Slack. (2) Document PMS integration: exactly HOW are rates pushed? API endpoint? SQL trigger? (3) Test rollback end-to-end; verify Seth can revert in <3 minutes on his laptop."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Failure Recovery",
+      "issue": "Cron timeout behavior not defined; no max-execution-time per job",
+      "details": "parse_reservations scheduled for 5:45 AM with no documented timeout. If CSV has 1M rows (slow parse), could take 20-30 min, pushing orchestrator run past 6:15 AM deadline. No timeout, no early kill, no fallback.",
+      "resolution": "Add to each cron job: timeout 10m (or appropriate duration for your data volume). Example: '45 5 * * * timeout 10m python /app/cron/parse_reservations.py...'. If timeout triggers, log error + alert Seth."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Failure Recovery",
+      "issue": "CSV staleness check ('skip if >6h old') is documented but not implemented; unclear how 6:30 AM retry works",
+      "details": "DATA_PIPELINE.md Section 7 says 'skip agent run if CSV delayed >6h', but no code shown. Who initiates the 6:30 AM retry? Manual? Automated? How does Seth know to check? No health check, no notification.",
+      "resolution": "Implement: (1) parse_reservations.py checks CSV timestamp on disk. If >6h old, exit with status code 1. (2) Orchestrator checks status; if failed, logs + alerts Seth. (3) Automated retry: if parse fails at 5:45 AM, cron automatically re-runs at 5:55 and 6:05 (two retries) before giving up. (4) Alert: 'CSV stale; skipping rate run. Please check PMS export at /data/reservations_*.csv'"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Failure Recovery",
+      "issue": "Competitor scraper failure fallback (use 7-day rolling avg) is mentioned but not automated",
+      "details": "If Hertz scraper fails at 8 PM, system supposedly falls back to 7-day average. But: (1) No code shown. (2) Which 7-day window? Last 7 days of that competitor only? (3) How does orchestrator know scraper failed vs. succeeded? No status flag in DB.",
+      "resolution": "Implement: (1) Each scraper writes status to competitor_rates table: competitor_status(competitor, date, success/failure, last_success_date). (2) Orchestrator queries this before agent run. (3) If scraper failed, populate competitor snapshot with 7-day rolling avg automatically. (4) Log which competitors using fallback data. (5) Alert Seth: 'Hertz scraper failed; using fallback data.'"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Operational Burden",
+      "issue": "No ops dashboard or single pane of glass; Seth must check multiple log files daily",
+      "details": "Logs spread across: /var/log/rate_mgmt/parse_res.log, scraper.log, load_rates.log, daily_run.log. Plus: rate_history DB, competitor_rates DB. No unified view. Seth must manually SSH and grep logs to diagnose issues.",
+      "resolution": "Create simple ops dashboard (Python Flask app, 2h effort): (1) Shows last 24h of system events (jobs run, failures, alerts). (2) Green/red status for each: parse, scraper, rate_push. (3) Latest agent decisions (5 most recent rates changed, with links to reasoning). (4) Manual revert button + rollback history. (5) Host at http://localhost:5000/ops. Accessible from Seth's laptop."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "Job Sequencing",
+      "issue": "No documented timeout between 5:55 AM rate fetch and 6:00 AM orchestrator run",
+      "details": "If load_pms_rates.py takes 30 seconds (normal), orchestrator runs at 6:00 with fresh rates (good). But if it takes 5 min (PMS slow), orchestrator might start before rate load finishes. Race condition possible.",
+      "resolution": "Add 5-minute sleep or explicit dependency check: (1) load_pms_rates.py writes completion flag to ~/.rate_mgmt/pms_rates.ready. (2) daily_run.py (6:00 AM) checks for flag; if missing, wait up to 2 min, then proceed with fallback (yesterday's rates). (3) Log dependency status."
+    },
+    {
+      "severity": "LOW",
+      "category": "Failure Recovery",
+      "issue": "PMS rate fallback to 'yesterday's rates' could propagate errors if yesterday's rate was rolled back",
+      "details": "If a bad rate is published, then manually reverted, the fallback for next day uses the reverted (correct) rate. This is actually fine. But if a bad rate is published and NOT reverted, fallback propagates it. Low risk if Seth catches issues quickly.",
+      "resolution": "Low priority. Mitigated by: (1) Data quality checks (MEDIUM issue above). (2) Manual approval workflow for suspicious rates (recommended in data quality resolution)."
+    }
+  ],
+  "recommendations": [
+    "1. IMMEDIATE (Week 1): Implement Slack alerting for all cron job failures. Send daily summary at 6:30 AM. Test with intentional failure to verify alerts work.",
+    "2. IMMEDIATE (Week 1): Create documented rollback procedure + test script. Verify Seth can revert a rate in <3 minutes on his own laptop.",
+    "3. IMMEDIATE (Week 1): Add timeout 10m to all cron jobs. Add health checks (lock files / status flags) to prevent orphaned runs.",
+    "4. HIGH PRIORITY (Week 2): Build simple ops dashboard showing last 24h event log, status of each component (green/red), and manual revert button.",
+    "5. HIGH PRIORITY (Week 2): Implement data quality validation before publishing rates: (a) ±15% of previous rate. (b) ±10% of competitor median. (c) Confidence >60%. Flag and alert on violations.",
+    "6. HIGH PRIORITY (Week 2): Implement automated scraper retry logic. If scraper fails at 8 PM, auto-retry at 8:30 PM and 9 PM. Use 7-day rolling avg as fallback with automatic logging.",
+    "7. BEFORE PRODUCTION: Document PMS integration in detail. Exactly how are rates written (API endpoint, auth, format)? Can they be read back / reverted? Provide Seth with one-page quick reference.",
+    "8. BEFORE PRODUCTION: Run 2-week dry-run on non-prod location (e.g., Henderson Executive). Daily manual oversight. Verify all monitoring, alerting, and rollback procedures work.",
+    "9. OPTIONAL (Nice-to-Have): Build auto-remediation for minor scraper failures (retry 3× before alerting). This reduces false alarms while maintaining data freshness.",
+    "10. OPTIONAL (Phase 2): Add real-time booking velocity detection. If bookings surge >30% in 1 hour, send alert to Seth (may want to override agent rates manually)."
+  ],
+  "verdict": "CONDITIONAL",
+  "summary": "The cron scheduling and job sequencing are sound, but the system is NOT ops-ready for production without immediate improvements. Critical gaps:\n\n1. FAILURE RECOVERY: If parse_reservations fails, the 6 AM orchestrator still runs with stale data. No guards, no alerts.\n\n2. MONITORING: No automated alerting. Seth must manually check logs daily or miss failures. No data quality validation. Bad rates could be published without detection.\n\n3. OPERATIONAL BURDEN: Manual daily oversight required. Estimated 15-30 min/day to verify system is working. Failure response is manual (SSH to servers, query DB, etc.), not <5 min.\n\n4. MANUAL OVERRIDE: No documented rollback procedure. Revert time is 7-10+ min, not <5 min. PMS integration unclear.\n\n✅ PASSED: Job sequencing is logically correct. 5:45-6:15 AM timeline is realistic. Consensus/constraint logic is solid.\n\n❌ FAILED: Monitoring, alerting, and ops procedures are not documented or implemented.\n\n🔧 CONDITIONAL PASS: System CAN go to production IF (1) Slack alerting added immediately. (2) Rollback procedure documented + tested. (3) Health checks + timeouts added. (4) Dry-run on non-prod location for 2 weeks with manual oversight. Then scale to other locations.\n\nEstimate: 15-20 hours of work (mostly ops/monitoring) to make production-ready. Currently estimated at MVP phase (Week 4-5 of 8-week plan), so gaps are expected. Schedule ops work for Week 2-3 of implementation timeline."
+}

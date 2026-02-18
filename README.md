@@ -135,6 +135,7 @@ Master Orchestrator (Opus)
 - **[ARCHITECTURE_PLAN.md](./docs/ARCHITECTURE_PLAN.md)** — Full 8-week implementation roadmap, agent hierarchy, decision logic (Phase 1 + Phase 2 enhancements)
 - **[DATA_PIPELINE.md](./docs/DATA_PIPELINE.md)** — Reservation parsing, competitor scraping, data schemas, cron integration
 - **[DATA_INPUTS.md](./docs/DATA_INPUTS.md)** — ⭐ **Comprehensive data specifications** for AI agents (Phase 1 baseline + Phase 1+ quick wins + Phase 2 enhancements). Includes SQL queries, JSON schemas, revenue impact projections, implementation timeline
+- **[DATA_SOURCES_COMPLETE_INVENTORY.md](./docs/DATA_SOURCES_COMPLETE_INVENTORY.md)** — Complete SQL Server database inventory (4.6M records across 5 tables), use cases, Phase 1 & 2 integration strategy
 
 ## KPIs & Success Metrics
 

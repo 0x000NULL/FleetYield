@@ -5,17 +5,22 @@
 ## Project Goal
 
 Build a **multi-agent AI system** that autonomously optimizes car rental rates across 8 Las Vegas locations using:
-- Real-time reservation data (nightly CSV dumps)
+- Real-time reservation data (**1.37M historical records, 718k 2023-2026**)
+- Fleet inventory snapshots (**1.96M daily updates by location/class**)
+- Booking patterns (**73.8k reservations for demand forecasting**)
 - Competitor price scraping (Hertz, Enterprise, Avis, etc.)
 - Consensus-driven decision making (master + location agents)
 - Complete audit trail & reversibility
 
 **Expected ROI**: 5-8% revenue lift ($5k+/month on $100k base revenue)
 
+**Data Status**: ✅ Complete. SQL Server ready with 4.6M records across 5 tables. Repeat customer analysis (9.7%) + location risk analysis complete.
+
 ## Quick Links
 
-- **[ARCHITECTURE_PLAN.md](./docs/ARCHITECTURE_PLAN.md)** — Full 8-week implementation roadmap
+- **[ARCHITECTURE_PLAN.md](./docs/ARCHITECTURE_PLAN.md)** — Full 8-week implementation roadmap + real data sources
 - **[DATA_PIPELINE.md](./docs/DATA_PIPELINE.md)** — Reservation parsing, competitor scraping, data flow
+- **[DATA_SOURCES_COMPLETE_INVENTORY.md](./docs/DATA_SOURCES_COMPLETE_INVENTORY.md)** — ⭐ Complete SQL inventory (4.6M records), Phase 1 & 2 integration strategy
 - **[AGENT_LOGIC.md](./docs/AGENT_LOGIC.md)** — Decision prompts, scoring rules, consensus algorithm
 - **[RATE_HISTORY.md](./docs/RATE_HISTORY.md)** — Database schema, auditability, rollback procedures
 

@@ -16,6 +16,29 @@ A **hybrid multi-agent system** that:
 
 ---
 
+## DATA SOURCES (Real Budget Rent a Car Data)
+
+**Your SQL Server contains 4.6M rental records across 5 tables:**
+
+| Table | Rows | Use Case |
+|-------|------|----------|
+| **RentworksExport.CompiledRentworks** | 1.37M | Return customers (9.7% repeat rate, 12.6k repeat renters), LTV by zip code, pricing history |
+| **FleetReports.FleetDetail2024** | 1.96M | Real-time inventory by location/class, vehicle availability for rate optimization |
+| **FleetReports.ResBookDate** | 73.8k | Booking patterns, advance reservation trends, demand forecasting by date |
+| **FleetReports.ResCOData** | 127.4k | Upsell patterns, class substitutions, actual vehicle rented vs. reserved |
+| **FleetReports.Rental Compiled** | 1.08M | Booking channels, cancellations, insurance patterns, data validation |
+
+**Key Insights Ready for Agents:**
+- **NELLISAFB** = #1 customer ($201K LTV over 112 rentals) — government contract protection
+- **Location B02531** = 66% of repeat revenue ($8.5M from 8.3k renters) — critical for retention
+- **Zip Code 89117** = top local customer area (279 repeat renters, $214K)
+- **Repeat Rate** = 9.7% (healthy; opportunity for loyalty pricing tiers)
+- **Daily Inventory** = 1.96M fleet snapshots available for utilization-based rates
+
+**See [DATA_SOURCES_COMPLETE_INVENTORY.md](./DATA_SOURCES_COMPLETE_INVENTORY.md) for full integration roadmap.**
+
+---
+
 ## 1. ARCHITECTURE OVERVIEW
 
 ### 1.1 Agent Hierarchy (Hybrid Model)
