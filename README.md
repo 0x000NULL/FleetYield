@@ -132,9 +132,9 @@ Master Orchestrator (Opus)
 ## Documentation
 
 - **[OVERVIEW.md](./OVERVIEW.md)** — Project goals & quick reference
-- **[ARCHITECTURE_PLAN.md](./docs/ARCHITECTURE_PLAN.md)** — Full 8-week implementation roadmap
-- **[DATA_PIPELINE.md](./docs/DATA_PIPELINE.md)** — Data sources, schemas, integration patterns
-- **[AGENT_LOGIC.md](./docs/AGENT_LOGIC.md)** — Decision scoring, prompts, examples (coming soon)
+- **[ARCHITECTURE_PLAN.md](./docs/ARCHITECTURE_PLAN.md)** — Full 8-week implementation roadmap, agent hierarchy, decision logic (Phase 1 + Phase 2 enhancements)
+- **[DATA_PIPELINE.md](./docs/DATA_PIPELINE.md)** — Reservation parsing, competitor scraping, data schemas, cron integration
+- **[DATA_INPUTS.md](./docs/DATA_INPUTS.md)** — ⭐ **Comprehensive data specifications** for AI agents (Phase 1 baseline + Phase 1+ quick wins + Phase 2 enhancements). Includes SQL queries, JSON schemas, revenue impact projections, implementation timeline
 
 ## KPIs & Success Metrics
 

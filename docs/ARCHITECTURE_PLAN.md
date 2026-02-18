@@ -165,22 +165,25 @@ A **hybrid multi-agent system** that:
 - **Schedule**: Weekly sync
 - **Impact**: "CES week (Jan 6-10) ➜ high demand multiplier"
 
-### 2.2 Agent Inputs at 6 AM
+### 2.2 Agent Inputs at 6 AM (Phase 1 Baseline)
 
 **Master passes to each Location Agent**:
 ```json
 {
   "location": "LAS_AIRPORT",
   "date": "2026-02-18",
+  "day_of_week": "Friday",
   "reservation_data": {
     "bookings_last_7d": { "E": 120, "F": 85, "S": 40 },
     "revenue_last_7d": { "E": 4800, "F": 3570, "S": 1800 },
     "cancellation_rate": 0.08,
-    "booking_sources": { "costco": 0.35, "priceline": 0.25, "budget_com": 0.20, "gds": 0.15, "other": 0.05 }
+    "booking_sources": { "costco": 0.35, "priceline": 0.25, "budget_com": 0.20, "gds": 0.15, "other": 0.05 },
+    "bookings_last_24h": { "E": 45, "F": 32, "S": 18 },
+    "velocity_multiplier": 1.41
   },
   "competitor_snapshot": {
-    "E": { "hertz": 49.99, "enterprise": 44.99, "avis": 47.99, "national": 46.00 },
-    "F": { "hertz": 55.99, "enterprise": 51.99, "avis": 53.00, "national": 52.00 }
+    "E": { "hertz": 49.99, "enterprise": 44.99, "avis": 47.99, "national": 46.00, "alamo": 44.00, "budget_com": 42.00 },
+    "F": { "hertz": 55.99, "enterprise": 51.99, "avis": 53.00, "national": 52.00, "alamo": 50.00, "budget_com": 48.00 }
   },
   "current_rates": {
     "E": 42.00,
@@ -188,14 +191,22 @@ A **hybrid multi-agent system** that:
     "S": 55.00
   },
   "inventory": {
-    "E": { "available": 15, "reserved": 42, "capacity": 60 },
-    "F": { "available": 8, "reserved": 28, "capacity": 40 }
+    "E": { "available": 15, "reserved": 42, "capacity": 60, "utilization_pct": 70 },
+    "F": { "available": 8, "reserved": 28, "capacity": 40, "utilization_pct": 70 }
   },
   "constraints": {
-    "margin_floor_pct": 0.25,
-    "cost_per_vehicle_day": {"E": 28, "F": 32},
+    "margin_floor": { "E": 45.93, "F": 49.60, "S": 53.73 },
     "max_rate_increase_pct": 0.15,
-    "competitor_parity_tolerance_pct": 0.10
+    "location_strategy": "competitive_parity",
+    "location_variance_tolerance": 0.05
+  },
+  "phase_2_optional": {
+    "dow_multiplier": 1.35,
+    "lead_time_distribution": { "<1d": 0.12, "1-3d": 0.20, "4-7d": 0.25, "8-14d": 0.25, "15+d": 0.18 },
+    "channel_margins": { "costco": 0.18, "priceline": 0.15, "gds": 0.30, "budget_com": 0.25 },
+    "elasticity_coefficient": -1.6,
+    "competitor_profiles": { "hertz": "premium", "enterprise": "volume", "budget_com": "self" },
+    "booking_velocity": 1.41
   }
 }
 ```
@@ -204,7 +215,7 @@ A **hybrid multi-agent system** that:
 
 ## 3. AGENT DECISION LOGIC (Per Location Agent)
 
-### 3.1 Agent Prompt Template
+### 3.1 Agent Prompt Template (Phase 1: Core Logic)
 
 ```
 You are a revenue optimization agent for [LOCATION] Budget Rent a Car.
@@ -214,40 +225,51 @@ You are a revenue optimization agent for [LOCATION] Budget Rent a Car.
 **Input Data**:
 - Reservation trend (7d): [BOOKINGS]
 - Current rates: [CURRENT]
-- Competitor rates: [COMPETITORS]
+- Competitor rates: [COMPETITORS] (Hertz, Enterprise, Avis, National, Alamo)
 - Inventory pressure: [UTILIZATION]
 - Booking sources breakdown: [SOURCES]
+- Location strategy: [STRATEGY] (competitive_parity, moderate_premium, or aggressive_premium)
 
-**Scoring Rules** (return as JSON):
+**Phase 1 Scoring Rules** (return as JSON):
 
 1. **DEMAND SCORE** (0-100):
    - Bookings trend: if ↑20% week-over-week → +30 points
    - Cancellation rate: if low (<5%) → +10 points
-   - Booking lead time: if advance (>3 days) → +15 points
-   - Booking source: premium channels (GDS, corpo) → +5 points
+   - Booking lead time: if advance (>3 days avg) → +15 points
+   - Booking source premium mix: if GDS/corporate >10% → +5 points
    - Result: max 100 points
 
 2. **INVENTORY PRESSURE** (0-100):
-   - Utilization <70% → 0 points (room to drop price)
-   - Utilization 70-85% → 40 points (neutral)
-   - Utilization 85-95% → 70 points (raise prices)
-   - Utilization >95% → 100 points (aggressive increase)
+   - Utilization <60% → 0 points (excess supply)
+   - Utilization 60-70% → 20 points (room for growth)
+   - Utilization 70-85% → 40 points (balanced)
+   - Utilization 85-95% → 70 points (tight; raise prices)
+   - Utilization >95% → 100 points (critical shortage; aggressive increase)
 
 3. **COMPETITIVE SCORE** (-50 to +50):
-   - If our price < median competitor -5% → +50 (underpriced, raise)
-   - If our price = median competitor ±3% → 0 (fair)
-   - If our price > median competitor +5% → -30 (overpriced, lower)
-   - Adjustment: if competitor is weak brand → reduce impact by 30%
+   - Compute: median(Hertz, Enterprise, Avis, National) as "big 3 median"
+   - Ignore: Alamo (low threat), Budget.com (that's you)
+   - If our price < big_3_median -5% → +50 (underpriced, raise)
+   - If our price = big_3_median ±3% → 0 (fair position)
+   - If our price > big_3_median +5% → -30 (overpriced, lower)
+   - Adjustment: if location_variance_tolerance <= 0.05 (airport/strip) → be conservative
 
 4. **MARGIN CHECK**:
-   - Min margin = cost_per_day × (1 + margin_floor_pct)
-   - If recommendation < min margin → adjust to min margin
+   - Min rate = margin_floor per car class (pre-calculated in constraints)
+   - If recommendation < min rate → adjust UP to min rate
+   - Never price below margin floor
 
-5. **FINAL RECOMMENDATION**:
+5. **LOCATION STRATEGY ADJUSTMENT**:
+   - If strategy = "competitive_parity" → cap raise at +5%
+   - If strategy = "moderate_premium" → allow raise up to +15%
+   - If strategy = "aggressive_premium" → allow raise up to +25%
+
+6. **FINAL RECOMMENDATION**:
    - Weighted average: (demand_score × 0.40) + (inventory_pressure × 0.35) + (competitive_score × 0.25)
-   - Map to % adjustment: -20% to +20% from current rate
+   - Map score (0-100) to % adjustment: 50 = 0%, 70 = +10%, 30 = -10%, etc.
+   - Apply location strategy cap
    - Apply margin floor
-   - Cap at max_rate_increase_pct
+   - Cap at max_rate_increase_pct (15%) for safety
    - Return: { car_class, recommended_rate, confidence (0-100), reasoning }
 
 **Output Format**:
@@ -257,7 +279,8 @@ You are a revenue optimization agent for [LOCATION] Budget Rent a Car.
     "demand_score": 75,
     "inventory_pressure": 65,
     "competitive_score": 10,
-    "weighted_score": 58
+    "weighted_score": 58,
+    "location_strategy": "competitive_parity"
   },
   "recommendations": [
     {
@@ -266,14 +289,93 @@ You are a revenue optimization agent for [LOCATION] Budget Rent a Car.
       "recommended_rate": 46.00,
       "change_pct": 9.5,
       "confidence": 85,
-      "reasoning": "Demand strong (bookings +18%), inventory tight (92% util), competitive parity (median 45.50). Increase 9.5% to optimize margin."
+      "reasoning": "Demand strong (bookings +18%), inventory balanced (70% util). Competitive position fair (median $46.50, ours $42.00). Raise 9.5% to $46.00, still below median. Margin floor ($45.93) respected."
     }
   ],
-  "assumptions": "Based on last 7 days data; no external events scheduled."
+  "assumptions": "Based on last 7 days data; no external events this week."
 }
 ```
 
-### 3.2 Example Agent Output
+### 3.2 Agent Prompt Template (Phase 2: Enhanced Logic with New Data)
+
+Once Phase 1 is running, add these refinements:
+
+```
+**Phase 2 Enhancement**: Add to scoring after Phase 1 runs stable (Week 4+)
+
+7. **DAY-OF-WEEK MULTIPLIER** (only if today is Fri/Sat):
+   - Friday: +35% volume surge expected
+   - Saturday: +42% volume surge expected
+   - If day = Friday/Saturday AND inventory >70% → add +20 points to demand_score
+   - This nudges rates higher on peak days naturally
+
+8. **LEAD TIME DISTRIBUTION SCORING**:
+   - Analyze: what % of bookings are 15+ days advance?
+   - If 15+d % > 20% (good), demand is predictable → add +10 points
+   - If 15+d % < 10% (bad), demand is unpredictable → subtract -10 points
+   - This helps agents understand booking quality/certainty
+
+9. **CHANNEL-SPECIFIC RATE RECOMMENDATIONS** (new):
+   - For each channel, compute weighted recommendation
+   - GDS channel: apply +0.30 margin floor (premium; can raise more)
+   - Costco channel: apply +0.18 margin floor (discount; be competitive)
+   - Priceline channel: apply +0.15 margin floor (OTA hunters; minimal margin)
+   - Budget.com channel: apply +0.25 margin floor (your direct; optimize for profit)
+   - Return: "For [channel], recommend [rate] (margin [pct])"
+
+10. **BOOKING VELOCITY SURGE DETECTION**:
+    - If bookings_last_24h > 1.3× baseline → demand surge detected
+    - If surge + inventory >70% → add +25 points to inventory_pressure_score
+    - This triggers faster rate increases when demand spikes
+
+11. **ELASTICITY-ADJUSTED SCORING** (by car class):
+    - Economy (E): demand_weight = 50%, inventory = 30%, competitive = 20%
+      (price-sensitive; protect volume)
+    - Mid-size (F): demand_weight = 40%, inventory = 35%, competitive = 25%
+      (baseline)
+    - Sedan (S): demand_weight = 30%, inventory = 35%, competitive = 35%
+      (less elastic; can raise on competition)
+    - Large (L): demand_weight = 25%, inventory = 35%, competitive = 40%
+      (premium; match on competition)
+
+12. **LOCATION-SPECIFIC AGGRESSIVENESS**:
+    - Airport/Strip (tolerance <0.06): weighted_score < 60 → don't raise
+    - Off-strip (tolerance 0.15-0.22): weighted_score > 50 → can raise aggressively
+    - Apply: final_rate_change = weighted_adjustment × location_aggressiveness_factor
+
+**Updated Output** (Phase 2):
+{
+  "location": "[LOCATION]",
+  "dow_context": "Friday +35% volume expected",
+  "channel_breakdown": {
+    "gds": { "volume": 0.15, "recommended_rate": 58.00, "margin": 0.30 },
+    "costco": { "volume": 0.35, "recommended_rate": 43.00, "margin": 0.18 },
+    "priceline": { "volume": 0.25, "recommended_rate": 41.00, "margin": 0.15 }
+  },
+  "booking_velocity": "1.41× baseline (surge detected)",
+  "analysis": {
+    "demand_score": 85,
+    "inventory_pressure": 75,
+    "competitive_score": 15,
+    "dow_boost": 20,
+    "velocity_boost": 25,
+    "elasticity_adjusted_demand_weight": 0.40,
+    "final_weighted_score": 70
+  },
+  "recommendations": [
+    {
+      "car_class": "E",
+      "current_rate": 42.00,
+      "recommended_rate": 47.50,
+      "change_pct": 13.1,
+      "confidence": 88,
+      "reasoning": "Friday surge (expected +35% volume) + real-time velocity 1.41× + inventory tight (70%) = aggressive raise opportunity. Elasticity-adjusted for economy cars (volume-focused): +13% is high but justified. Margin check: $47.50 > $45.93 (floor). Competitive check: $47.50 = median $46.50 + 2%. Clean raise."
+    }
+  ]
+}
+```
+
+### 3.3 Example Agent Output (Phase 1)
 
 ```json
 {
@@ -673,4 +775,30 @@ Location: LAS Airport | Date: Feb 18, 2026
 
 ---
 
-**Next**: Confirm this plan with your team, then begin Week 1 data pipeline work.
+## APPENDIX: Complete Data Specifications
+
+**See `docs/DATA_INPUTS.md` for detailed specifications of all data inputs:**
+
+### Phase 1 (MVP) Inputs
+1. Nightly reservation data
+2. Competitor price scraping
+3. Current rates from PMS
+4. Fleet inventory
+5. Cost structure
+
+### Phase 1+ Quick Wins (High-Impact, Low Effort)
+6. Day-of-week demand multipliers (+2-3% revenue)
+7. Booking lead time curves (+3-4% revenue)
+8. Channel-specific economics (+2-3% revenue)
+9. Price elasticity by car class (+1-2% revenue)
+10. Competitor strength profiles (prevents margin leakage)
+11. Location market context (+1-2% revenue)
+
+### Phase 2 Enhancements
+12. Real-time booking velocity (surge detection)
+13. Customer lifetime value & repeat impact
+14. External events calendar & demand spikes
+
+**Total potential revenue lift from all inputs: 7-13%** (conservative estimates; can be higher)
+
+See DATA_INPUTS.md for SQL queries, JSON schemas, implementation timelines, and ROI projections.
